@@ -54,8 +54,16 @@ def Coefficients_Inversion(NW,NX,P,W,T_period,T_range,T_step,efield,INV_MODE, to
 # Build the M matrix
     M[:, 0] = 1.0
     for i_n in range(1, nP_components):
-        exp_neg = np.exp(-1j * W[i_n] * T_i, dtype=np.cdouble)
-        exp_pos = np.exp(1j * W[i_n] * T_i, dtype=np.cdouble)
+        if efield["name"] in {"SIN", "SOFTSIN", "ANTIRES"}:
+            exp_neg = np.exp(-1j * W[i_n] * T_i, dtype=np.cdouble)
+            exp_pos = np.exp(1j * W[i_n] * T_i, dtype=np.cdouble)
+        if efield["name"] in {"QSSIN"}:
+            T_0=efield["initial_time"]
+            print("T_0=",T_0/fs2aut)
+            sigma=efield["damping"]/(2.0*(2.0*np.log(2.0)**0.5))
+            print("sigma=",sigma/fs2aut)
+            exp_neg = np.exp(-1j * W[i_n] * T_i, dtype=np.cdouble)*np.exp((T_i-T_0)**2/(2*sigma**2))
+            exp_pos = np.exp(1j * W[i_n] * T_i, dtype=np.cdouble)*np.exp((T_i-T_0)**2/(2*sigma**2))
         M[:, i_n] = exp_neg
         M[:, i_n - 1 + NX] = exp_pos
 
@@ -126,10 +134,11 @@ def Harmonic_Analysis(nldb, X_order=4, T_range=[-1, -1],prn_Peff=False,INV_MODE=
     print("\n* * * Harmonic analysis * * *\n")
 
     # Check for valid field type
-    if efield["name"] not in {"SIN", "SOFTSIN", "ANTIRES"}:
-        print("Harmonic analysis works only with SIN or SOFTSIN fields")
-        sys.exit(0)
-
+#---------------anna change----------
+#    if efield["name"] not in {"SIN", "SOFTSIN", "ANTIRES"}:
+#        print("Harmonic analysis works only with SIN or SOFTSIN fields")
+#        sys.exit(0)
+#---------------end anna change---------
     # Check for single field
     if any(ef["name"] != "none" for ef in nldb.Efield_general[1:]):
         print("Harmonic analysis works only with a single field, please use sum_frequency.py functions")
