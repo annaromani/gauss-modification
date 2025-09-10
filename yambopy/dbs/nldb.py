@@ -48,6 +48,9 @@ class YamboNLDB(object):
          efield["freq_steps"] =database.variables['Field_Freq_steps_'+str(n)][:].astype(np.double)
          efield["freq_step"]  =database.variables['Field_Freq_step_'+str(n)][0].astype(np.double)
          efield["initial_time"]  =database.variables['Field_Initial_time_'+str(n)][0].astype(np.double)
+         efield["frequency"]  = self.NL_er[:]# NL_er
+         efield["RT_step"]=self.RT_step
+         efield["N_energy_steps"]=self.NE_steps
          #
          # set t_initial according to Yambo 
          #
@@ -57,7 +60,8 @@ class YamboNLDB(object):
          # define the field amplitude
          #
          efield["amplitude"]    =np.sqrt(efield["intensity"]*4.0*np.pi/speed_of_light)
-
+         efield["Nt_points"] =self.IO_TIME_N_points
+         efield["delta_t"]=self.IO_TIME_points
          return efield
 
     def read_observables(self,database):
@@ -68,7 +72,6 @@ class YamboNLDB(object):
         self.NE_steps       = database.variables['NE_steps'][0].astype('int')
         self.RT_step        = database.variables['RT_step'][0].astype(np.double)
         self.n_frequencies  = database.variables['n_frequencies'][0].astype('int')
-
         try:
             self.n_angles       = database.variables['n_angles'][0].astype('int')
         except:

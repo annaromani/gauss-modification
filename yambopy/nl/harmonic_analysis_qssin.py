@@ -12,7 +12,7 @@ import scipy.linalg
 import sys
 import os
 
-def Coefficients_Inversion(NW,NX,P,W,T_period,T_range,T_step,efield,INV_MODE, tol=1e-8):
+def Coefficients_Inversion(NW,NX,P,W,T_period,T_range,T_step,efield,INV_MODE, gauss_width, tol=1e-8):
     """
     Compute coefficients inversion using various inversion modes.
     see Sec. III in PRB 88, 235113 (2013) 
@@ -27,7 +27,7 @@ def Coefficients_Inversion(NW,NX,P,W,T_period,T_range,T_step,efield,INV_MODE, to
         T_step (float): Time step.
         efield (dict): Contains external field information.
         INV_MODE (str): Inversion mode ('full', 'lstsq', 'svd').
-
+        gauss_width: gaussian width
     Returns:
         tuple: X_here (inverted coefficients), Sampling (array of time and values).
     """
@@ -50,29 +50,16 @@ def Coefficients_Inversion(NW,NX,P,W,T_period,T_range,T_step,efield,INV_MODE, to
     T_i = np.array([(i_t_start + i_deltaT * i) * T_step - efield["initial_time"] for i in range(M_size)])
     P_i = np.array([P[i_t_start + i_deltaT * i] for i in range(M_size)])
     Sampling = np.column_stack((T_i / fs2aut, P_i))
-    with open("Sampling_pol.txt", "a") as f:
-        for t_i, i in enumerate(T_i):
-            f.write(t_i, P_i[i])
 
 # Build the M matrix
     M[:, 0] = 1.0
     for i_n in range(1, nP_components):
-        if efield["name"] in {"SIN", "SOFTSIN", "ANTIRES"}:
-            exp_neg = np.exp(-1j * W[i_n] * T_i, dtype=np.cdouble)
-            exp_pos = np.exp(1j * W[i_n] * T_i, dtype=np.cdouble)
-        if efield["name"] in {"QSSIN"}:
-            sigma=efield["damping"]/(2.0*(2.0*np.log(2.0)**0.5))
-            W_0=efield["frequency"][0]
-            #to mimin nint(x) in python
-            def nint(x):
-                return np.floor(x + 0.5) * (x >= 0) + np.ceil(x - 0.5) * (x < 0)
-            T_0=np.pi/W_0*np.float32(np.real(nint(W_0/np.pi*3.0*sigma)))
-
-            exp_neg = np.exp(-1j * W[i_n] * T_i, dtype=np.cdouble)*np.exp((T_i-T_0)**2/(2*sigma**2))
-            exp_pos = np.exp(1j * W[i_n] * T_i, dtype=np.cdouble)*np.exp((T_i-T_0)**2/(2*sigma**2))
+        exp_neg = np.exp(-1j * W[i_n] * T_i * i_n, dtype=np.cdouble) * np.exp(- gauss_width * i_n * (T_i) **2, dtype=np.cdouble)
+        exp_pos = np.exp(1j * W[i_n] * T_i * i_n, dtype=np.cdouble) * np.exp(- gauss_width * i_n * (T_i)**2, dtype=np.cdouble)
         M[:, i_n] = exp_neg
         M[:, i_n - 1 + NX] = exp_pos
-
+    print(M)
+    print(os.getcwd())
 # Invert M matrix
     INV_MODES = ['full', 'lstsq', 'svd']
     if INV_MODE not in INV_MODES:
@@ -105,7 +92,7 @@ def Coefficients_Inversion(NW,NX,P,W,T_period,T_range,T_step,efield,INV_MODE, to
 
 
 
-def Harmonic_Analysis(nldb, X_order=4, T_range=[-1, -1],prn_Peff=False,INV_MODE="full",prn_Xhi=True):
+def Harmonic_Analysis(nldb, X_order=4, T_range=[-1, -1],gauss_width=0.0, prn_Peff=False,INV_MODE="full",prn_Xhi=True):
     """
     Perform harmonic analysis on a dataset.
 
@@ -140,11 +127,10 @@ def Harmonic_Analysis(nldb, X_order=4, T_range=[-1, -1],prn_Peff=False,INV_MODE=
     print("\n* * * Harmonic analysis * * *\n")
 
     # Check for valid field type
-#---------------anna change----------
-#    if efield["name"] not in {"SIN", "SOFTSIN", "ANTIRES"}:
-#        print("Harmonic analysis works only with SIN or SOFTSIN fields")
-#        sys.exit(0)
-#---------------end anna change---------
+    if efield["name"] not in {"SIN", "SOFTSIN", "ANTIRES"}:
+        print("Harmonic analysis works only with SIN or SOFTSIN fields")
+        sys.exit(0)
+
     # Check for single field
     if any(ef["name"] != "none" for ef in nldb.Efield_general[1:]):
         print("Harmonic analysis works only with a single field, please use sum_frequency.py functions")
@@ -209,16 +195,14 @@ def Harmonic_Analysis(nldb, X_order=4, T_range=[-1, -1],prn_Peff=False,INV_MODE=
         for i_d in range(3):
             X_effective[:, i_f, i_d], SamplingP[:, :, i_f, i_d] = Coefficients_Inversion(
                 X_order + 1, X_order + 1, polarization[i_f][i_d, :],
-                Harmonic_Frequency[:, i_f], T_period, T_range, T_step, efield, INV_MODE
+                Harmonic_Frequency[:, i_f], T_period, T_range, T_step, efield, INV_MODE,gauss_width
             )
         if l_eval_current:
             for i_d in range(3):
                 Sigma_effective[:,i_f,i_d],SamplingJ[:,:,i_f,i_d] = Coefficients_Inversion(
                     X_order+1, X_order+1, current[i_f][i_d,:],
                     Harmonic_Frequency[:,i_f],T_period,T_range,T_step,efield,INV_MODE
-                    )
-    print("X_eff i_f=26, i_d=1", X_effective[:,25,0])
-           
+                )
     # Calculate susceptibilities
     for i_order in range(X_order + 1):
         for i_f in range(n_runs):
@@ -234,8 +218,7 @@ def Harmonic_Analysis(nldb, X_order=4, T_range=[-1, -1],prn_Peff=False,INV_MODE=
             Susceptibility[i_order, i_f, :] *= Divide_by_the_Field(nldb.Efield[i_f], i_order)
             if l_eval_current:
                 Conductibility[i_order,i_f,:] *=Divide_by_the_Field(nldb.Efield[i_f],i_order)
-        
-        print('susceptibility=', Susceptibility[i_order, 25, 0])            
+
 
     prefix = f'-{nldb.calc}' if nldb.calc != 'SAVE' else ''
 
