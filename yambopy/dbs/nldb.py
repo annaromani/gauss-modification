@@ -56,7 +56,6 @@ class YamboNLDB(object):
          #
          efield["initial_indx"] =max(round(efield["initial_time"]/RT_step)+1,2)
          efield["initial_time"] =(efield["initial_indx"]-1)*RT_step
-         #
          # define the field amplitude
          #
          efield["amplitude"]    =np.sqrt(efield["intensity"]*4.0*np.pi/speed_of_light)
