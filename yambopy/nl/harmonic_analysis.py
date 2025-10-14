@@ -73,11 +73,19 @@ def Coefficients_Inversion(NW,N_samp,P,W,
              #    return np.floor(x + 0.5) * (x >= 0) + np.ceil(x - 0.5) * (x < 0)
              #T_0=np.pi/W_0*np.float32(np.real(nint(W_0/np.pi*3.0*sigma)))
     
-             exp_neg = np.exp(-1j * W[i_n] * T_i, dtype=np.cdouble)*np.exp((T_i-T_0)**2/(2*sigma**2))
-             exp_pos = np.exp(1j * W[i_n] * T_i, dtype=np.cdouble)*np.exp((T_i-T_0)**2/(2*sigma**2))
+             exp_neg = np.exp(-1j * W[i_n] * T_i, dtype=np.cdouble)*np.exp(i_n*(T_i-T_0)**2/(2*sigma**2))
+             exp_pos = np.exp(1j * W[i_n] * T_i, dtype=np.cdouble)*np.exp(i_n*(T_i-T_0)**2/(2*sigma**2))
          M[:, i_n] = exp_neg
          M[:, i_n - 1 + NW] = exp_pos
     
+    output_file = f'M_matrix_F{i_f+1}_{INV_MODE}_n_nm.txt'
+    header= "#".join([f"E_0 E_1_0 E_2_0 E_-1_0 E_-2_0"])
+
+    with open(output_file, 'w') as f:
+        f.write(header + '\n')
+        for line in M:
+            np.savetxt(f, line.reshape(1, -1), fmt='%.4f', delimiter=' ')
+
     if INV_MODE=='full':
         try:
             INV = np.linalg.inv(M)
@@ -113,7 +121,7 @@ def Coefficients_Inversion(NW,N_samp,P,W,
 
 
 
-def Harmonic_Analysis(nldb, X_order=4, N_samp=-1, T_range=[-1, -1],prn_Peff=False,INV_MODE="full",prn_Xhi=True):
+def Harmonic_Analysis(nldb, X_order, N_samp=-1, T_range=[-1, -1],prn_Peff=False,INV_MODE="full",prn_Xhi=True):
     """
     Perform harmonic analysis on a dataset.
 
@@ -219,7 +227,7 @@ def Harmonic_Analysis(nldb, X_order=4, N_samp=-1, T_range=[-1, -1],prn_Peff=Fals
         
     # Find the Fourier coefficients by inversion
     for i_f in tqdm(range(n_runs)):
-        #T_0=0.0
+        T_0=0.0
         #sigma=0.0
         if  efield["name"]=="QSSIN":
             T_period = 2.0 * np.pi / Harmonic_Frequency[1, i_f]
@@ -389,15 +397,16 @@ def Coefficients_Inversion_nm(NW,N_samp,P,W,
     #
     # Here we use always NW=NX
     N=NW-1
-    if efield["name"] in {"SIN", "SOFTSIN", "ANTIRES"}:
-        M_size=2*N+1
-    if efield["name"] in {"QSSIN"}:
-        if N%2==0:
-            M_size =(N*(N+4)+2)/2
-        else:
-            M_size =(N*(N+4)+1)/2
+    #if efield["name"] in {"SIN", "SOFTSIN", "ANTIRES"}:
+       # M_size=2*N+1
+    #if efield["name"] in {"QSSIN"}:
+    if N%2==0:
+        M_size =(N*(N+4)+2)/2
+    else:
+        M_size =(N*(N+4)+1)/2
     # Positive and negative components plut the zero
     M_size=int(M_size)
+    L=int((M_size-1)/2+1)
     if N_samp==-1: N_samp = M_size
     if N_samp < M_size:
         print("too few sampling points!")
@@ -425,23 +434,31 @@ def Coefficients_Inversion_nm(NW,N_samp,P,W,
 # Build the M matrix
     M[:, 0] = 1.0
     if efield["name"] in {"SIN", "SOFTSIN", "ANTIRES"}:
+        j=0
         for i_n in range(1, N+1):
-            exp_neg = np.exp(-1j * W[i_n] * T_i, dtype=np.cdouble)
-            exp_pos = np.exp(1j * W[i_n] * T_i, dtype=np.cdouble)
-        M[:, i_n] = exp_neg
-        M[:, i_n-1+NW] = exp_pos
+            for i_m in range(0, floor(i_n/2)+1):
+                j=j+1
+                exp_neg = np.exp(-1j * W[i_n-2*i_m] * T_i, dtype=np.cdouble)
+                exp_pos = np.exp(1j * W[i_n-2*i_m] * T_i, dtype=np.cdouble)
+                M[:, j] = exp_neg
+                M[:, j-1+L] = exp_pos
 
     if efield["name"] in {"QSSIN"}:
         j=0
-        L=(M_size-1)/2+1
-        L=int(L)
         for i_n in range(1, N+1):
             for i_m in range(0, floor(i_n/2)+1):
-                exp_neg = np.exp(-1j * W[i_n-2*i_m] * T_i, dtype=np.cdouble)*np.exp((T_i-T_0)**2/(2*sigma**2))
-                exp_pos = np.exp(1j * W[i_n-2*i_m] * T_i, dtype=np.cdouble)*np.exp((T_i-T_0)**2/(2*sigma**2))
+                j=j+1
+                exp_neg = np.exp(-1j * W[i_n-2*i_m] * T_i, dtype=np.cdouble)*np.exp(i_n*(T_i-T_0)**2/(2*sigma**2))
+                exp_pos = np.exp(1j * W[i_n-2*i_m] * T_i, dtype=np.cdouble)*np.exp(i_n*(T_i-T_0)**2/(2*sigma**2))
                 M[:, j] = exp_neg
                 M[:, j-1+L] = exp_pos
-                j=j+1
+
+    output_file = f'M_matrix_F{i_f+1}_{INV_MODE}.txt'
+    header= "#".join([f"E_0 E_1_0 E_2_0 E_2_1 E_-1_0, E_-2_0 E_-2_1"])
+    with open(output_file, 'w') as f:
+        f.write(header + '\n') 
+        for line in M:
+            np.savetxt(f, line.reshape(1, -1), fmt='%.4f', delimiter=' ')
     
     if INV_MODE=='full':
         try:
@@ -469,6 +486,7 @@ def Coefficients_Inversion_nm(NW,N_samp,P,W,
 
     #if SOLV_MODE==['LSReg']:
     X_here=np.zeros(L,dtype=np.cdouble)
+    print (L, len(X_here))
     for i_n in range(L):
         if INV_MODE=='lstsq' or INV_MODE=='lstsq_init':
             X_here[i_n]=X_here[i_n]+np.sum(INV[i_n,:]*P_i[:])
@@ -560,6 +578,7 @@ def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1, T_range=[-1, -1],prn_Peff=F
     if X_order%2==0: M_size =(X_order*(X_order+4)+2)/2
     else:
         M_size =(X_order*(X_order+4)+1)/2 
+    
     M_size=int(M_size)
     L=int((M_size-1)/2+1)
     # Polarization response
@@ -590,7 +609,7 @@ def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1, T_range=[-1, -1],prn_Peff=F
         
     # Find the Fourier coefficients by inversion
     for i_f in tqdm(range(n_runs)):
-        #T_0=0.0
+        T_0=0.0
         #sigma=0.0
         if  efield["name"]=="QSSIN":
             T_period = 2.0 * np.pi / Harmonic_Frequency[1, i_f]
@@ -674,7 +693,7 @@ def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1, T_range=[-1, -1],prn_Peff=F
                         Conductibility[k, m ,i_f,:] *=Divide_by_the_Field(nldb.Efield[i_f], k+m)
     #print(X_effective[3, :, 1])
     prefix = f'-{nldb.calc}' if nldb.calc != 'SAVE' else ''
-    
+
     for n in range(X_order+1):
         for m in range(0, floor(n/2)+1):
             k=n-m

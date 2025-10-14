@@ -13,9 +13,9 @@ import argparse
 import shutil
 import matplotlib.pyplot as plt
 
-yambo  = 'yambo'
-p2y    = 'p2y'
-prefix = 'bn'
+yambo  = '/users/3059354/program/yambo_myrta/bin/yambo'
+p2y    = '/users/3059354/program/yambo_myrta/bin/p2y'
+prefix = 'NiI2'
 folder = 'bse_conv'
 
 scheduler = Scheduler.factory
