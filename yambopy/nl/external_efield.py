@@ -23,6 +23,7 @@ def Divide_by_the_Field(efield,order):
             divide_by_field=4.0/np.power(efield['amplitude'],2.0,dtype=np.cdouble)
 
     elif efield['name'] == 'QSSIN':
+        print(efield['amplitude'])
         # Approximate relations/does not work yet
         sigma=efield["damping"]/(2.0*(2.0*np.log(2.0)**0.5))
         if order!=0:

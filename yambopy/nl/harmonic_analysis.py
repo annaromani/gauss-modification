@@ -453,17 +453,19 @@ def Coefficients_Inversion_nm(NW,N_samp,P,W,
                 M[:, j] = exp_neg
                 M[:, j-1+L] = exp_pos
 
-    output_file = f'M_matrix_F{i_f+1}_{INV_MODE}.txt'
-    header= "#".join([f"E_0 E_1_0 E_2_0 E_2_1 E_-1_0, E_-2_0 E_-2_1"])
-    with open(output_file, 'w') as f:
-        f.write(header + '\n') 
-        for line in M:
-            np.savetxt(f, line.reshape(1, -1), fmt='%.4f', delimiter=' ')
+    #output_file = f'M_matrix_F{i_f+1}_{INV_MODE}.txt'
+    #header= "#".join([f"E_0 E_1_0 E_2_0 E_2_1 E_-1_0, E_-2_0 E_-2_1"])
+    #with open(output_file, 'w') as f:
+    #    f.write(header + '\n') 
+    #    for line in M:
+    #        np.savetxt(f, line.reshape(1, -1), fmt='%.4f', delimiter=' ')
     
     if INV_MODE=='full':
-        try:
-            INV = np.linalg.inv(M)
-        except:
+        INV = np.linalg.inv(M)
+        COND = np.linalg.cond(M)
+        spacing=1/np.spacing(1)
+        #print("cond=", COND, "spacing=", spacing)
+        if  COND > spacing:
             print("Singular matrix!!! standard inversion failed ")
             print("set inversion mode to LSTSQ")
             INV_MODE="lstsq"
@@ -486,18 +488,22 @@ def Coefficients_Inversion_nm(NW,N_samp,P,W,
 
     #if SOLV_MODE==['LSReg']:
     X_here=np.zeros(L,dtype=np.cdouble)
-    print (L, len(X_here))
+    #print (L, len(X_here))
+    #for i_n in range(L):
+    #    if INV_MODE=='lstsq' or INV_MODE=='lstsq_init':
+    #        X_here[i_n]=X_here[i_n]+np.sum(INV[i_n,:]*P_i[:])
+    #    else:
+    #X_here=X_here+np.sum(INV[i_n,:]*P_i[:])
     for i_n in range(L):
-        if INV_MODE=='lstsq' or INV_MODE=='lstsq_init':
-            X_here[i_n]=X_here[i_n]+np.sum(INV[i_n,:]*P_i[:])
-        else:
-            X_here[i_n]=X_here[i_n]+np.sum(INV[i_n,:]*P_i[:])
+        X_here[i_n]=X_here[i_n]+np.sum(INV[i_n,:]*P_i[:])
+
     return X_here,Sampling
 
 
 
 
-def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1, T_range=[-1, -1],prn_Peff=False,INV_MODE="full",prn_Xhi=True):
+
+def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1,Sampling=1.0, T_range=[-1, -1],prn_Peff=False,INV_MODE="full",prn_Xhi=True):
     """
     Perform harmonic analysis on a dataset.
 
@@ -615,9 +621,9 @@ def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1, T_range=[-1, -1],prn_Peff=F
             T_period = 2.0 * np.pi / Harmonic_Frequency[1, i_f]
             T_0=np.pi/Harmonic_Frequency[1, i_f]*float(round(Harmonic_Frequency[1, i_f]/np.pi*3.0*sigma))
             if T_range[0] <= 0.0:
-                T_range[0] = T_0 - T_period/2
+                T_range[0] = Sampling*T_0 - T_period/2
             if T_range[1] <= 0.0:
-                T_range[1] = T_0 + T_period/2
+                T_range[1] = Sampling*T_0 + T_period/2
         #print(f"Time range: {T_range[0] / fs2aut:.3f} - {T_range[1] / fs2aut:.3f} [fs]")
         T_range_initial = np.copy(T_range)
         T_range, out_of_bounds = update_T_range(T_period, T_range_initial, time)
@@ -643,6 +649,7 @@ def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1, T_range=[-1, -1],prn_Peff=F
         
                 # change order in matrix:
         
+
         """ create a matrix from X_here array:
         X_here=[0_0, 1_0, 2_0, 2_1, 3_0, 3_1, 4_0, 4_1, 4_2, 5_0, 5_1, 5_2,...]
         to 
@@ -688,9 +695,17 @@ def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1, T_range=[-1, -1],prn_Peff=F
                         if l_eval_current:
                             Conductibility[k, m,  i_f,:] = Sigma_matrix[k, m, i_f, :]
 
-                    Susceptibility[k, m , i_f, :] *= Divide_by_the_Field(nldb.Efield[i_f], k+m )
+                    Susceptibility[k, m , i_f, :] *= Divide_by_the_Field(nldb.Efield[i_f], n )
                     if l_eval_current:
-                        Conductibility[k, m ,i_f,:] *=Divide_by_the_Field(nldb.Efield[i_f], k+m)
+                        Conductibility[k, m ,i_f,:] *=Divide_by_the_Field(nldb.Efield[i_f], n)
+        
+        output_file = f'Xeffective_F{i_f+1}_{INV_MODE}.txt'
+        header= "#".join([f"X_eff_x   X_eff_y   X_eff_z"])
+        with open(output_file, 'w') as f:
+            f.write(header + '\n')
+            for line in X_effective[:,i_f, :]:
+                np.savetxt(f, line.reshape(1, -1), fmt='%.4E', delimiter=' ')
+
     #print(X_effective[3, :, 1])
     prefix = f'-{nldb.calc}' if nldb.calc != 'SAVE' else ''
 
@@ -705,8 +720,8 @@ def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1, T_range=[-1, -1],prn_Peff=F
         for n in range(X_order+1):
            for m in range(0, floor(n/2)+1):
                k=n-m
-               output_file = f'o{prefix}.YamboPy-X_probe_order_{k+m}{m}_{INV_MODE}'
-               header = "[eV] " + " ".join([f"X/Im(z){k+m}{m} X/Re(z){k+m}{m}" for _ in range(3)])
+               output_file = f'o{prefix}.YamboPy-X_probe_order_{k+m}{m}_{Sampling}'
+               header = "[eV] " + " ".join([f"X/Im(z){n}{m} X/Re(z){n}{m}" for _ in range(3)])
                values = np.column_stack((freqs * ha2ev, Susceptibility[k,m, :, 0].imag, Susceptibility[k,m, :, 0].real,
                                          Susceptibility[k,m, :, 1].imag, Susceptibility[k,m, :, 1].real,
                                          Susceptibility[k,m, :, 2].imag, Susceptibility[k,m, :, 2].real))
