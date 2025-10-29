@@ -23,13 +23,13 @@ def Divide_by_the_Field(efield,order):
             divide_by_field=4.0/np.power(efield['amplitude'],2.0,dtype=np.cdouble)
 
     elif efield['name'] == 'QSSIN':
-        print(efield['amplitude'])
+        #print(efield['amplitude'])
         # Approximate relations/does not work yet
         sigma=efield["damping"]/(2.0*(2.0*np.log(2.0)**0.5))
         if order!=0:
             divide_by_field = (-2.0*1.0j/(efield['amplitude']))**order
         elif order==0:
-            divide_by_field = 4.0/(efield['amplitude'])
+            divide_by_field = 4.0/(efield['amplitude'])**2
     else:
         raise ValueError("Electric field not implemented in Divide_by_the_Field!")
 

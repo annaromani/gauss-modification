@@ -11,7 +11,7 @@ from tqdm import tqdm
 import scipy.linalg
 import sys
 import os
-from math import floor
+from math import floor, ceil
 def Coefficients_Inversion(NW,N_samp,P,W,
         i_f, T_0,sigma,
         T_period,T_range,T_step,efield,INV_MODE, tol=1e-8):
@@ -231,7 +231,7 @@ def Harmonic_Analysis(nldb, X_order, N_samp=-1, T_range=[-1, -1],prn_Peff=False,
         #sigma=0.0
         if  efield["name"]=="QSSIN":
             T_period = 2.0 * np.pi / Harmonic_Frequency[1, i_f]
-            T_0=np.pi/Harmonic_Frequency[1, i_f]*float(round(Harmonic_Frequency[1, i_f]/np.pi*3.0*sigma))
+            T_0=np.pi/Harmonic_Frequency[1, i_f]*float(round(Harmonic_Frequency[1, i_f]/np.pi*6.0*sigma))
             if T_range[0] <= 0.0:
                 T_range[0] = T_0 - T_period/2
             if T_range[1] <= 0.0:
@@ -400,13 +400,15 @@ def Coefficients_Inversion_nm(NW,N_samp,P,W,
     #if efield["name"] in {"SIN", "SOFTSIN", "ANTIRES"}:
        # M_size=2*N+1
     #if efield["name"] in {"QSSIN"}:
-    if N%2==0:
-        M_size =(N*(N+4)+2)/2
-    else:
-        M_size =(N*(N+4)+1)/2
+    #if N%2==0:
+    #    M_size =(N*(N+4)+2)/2
+    #else:
+    #    M_size =(N*(N+4)+1)/2
+    M_size = 1+2*N + int(N*(N-1)/2) 
     # Positive and negative components plut the zero
     M_size=int(M_size)
-    L=int((M_size-1)/2+1)
+    L = [int(N/2*((N/2+1))),int(((N+1)/2)**2)]
+    print(L)
     if N_samp==-1: N_samp = M_size
     if N_samp < M_size:
         print("too few sampling points!")
@@ -424,34 +426,67 @@ def Coefficients_Inversion_nm(NW,N_samp,P,W,
 
 # Calculation of  T_i and P_i
     T_i = np.array([(i_t_start + i_deltaT * i) * T_step - efield["initial_time"] for i in range(N_samp)])
-    P_i = np.array([P[i_t_start + i_deltaT * i] for i in range(M_size)])
+    P_i = np.array([P[i_t_start + i_deltaT * i] for i in range(N_samp)])
+    #print("P_i", P_i[0], P_i[1], P_i[2])
+    #print(P_i)
     Sampling = np.column_stack((T_i / fs2aut, P_i))
+    #print(np.shape(Sampling))
+    Sampling=np.array(Sampling)
     f=open("Sampling_pol_%i.txt"%(i_f+1), "w")
-    for i in range(M_size):
-        f.write(f"{T_i[i]/fs2aut}, {P_i[i]:.2E}\n")
+    for i in Sampling:
+        f.write(f"{i[0]} {i[1]} \n")
     f.close()
 
 # Build the M matrix
+    I=np.zeros((M_size,2))
     M[:, 0] = 1.0
-    if efield["name"] in {"SIN", "SOFTSIN", "ANTIRES"}:
-        j=0
-        for i_n in range(1, N+1):
-            for i_m in range(0, floor(i_n/2)+1):
-                j=j+1
-                exp_neg = np.exp(-1j * W[i_n-2*i_m] * T_i, dtype=np.cdouble)
-                exp_pos = np.exp(1j * W[i_n-2*i_m] * T_i, dtype=np.cdouble)
-                M[:, j] = exp_neg
-                M[:, j-1+L] = exp_pos
-
-    if efield["name"] in {"QSSIN"}:
-        j=0
-        for i_n in range(1, N+1):
-            for i_m in range(0, floor(i_n/2)+1):
-                j=j+1
-                exp_neg = np.exp(-1j * W[i_n-2*i_m] * T_i, dtype=np.cdouble)*np.exp(i_n*(T_i-T_0)**2/(2*sigma**2))
-                exp_pos = np.exp(1j * W[i_n-2*i_m] * T_i, dtype=np.cdouble)*np.exp(i_n*(T_i-T_0)**2/(2*sigma**2))
-                M[:, j] = exp_neg
-                M[:, j-1+L] = exp_pos
+    j=0
+    I[j]=(0,0)
+    numbers = range(1, N+1)
+    evens = (n for n in numbers if n % 2 == 0)
+    odd = (n for n in numbers if n % 2 == 1)
+    for n in evens:
+        j=j+1
+        if efield["name"] in {"QSSIN"}:
+            x=1.0 #e**x =  for x = 0
+            #M[:,j]=np.exp(n*(T_i-T_0)**2/(2*sigma**2))
+        if efield["name"] in {"SIN", "SOFTSIN", "ANTIRES"}:
+            x=0.0
+            #M[:,j]=1.0
+        M[:,j]=np.exp(x*n*(T_i-T_0)**2/(2*sigma**2))
+        I[j]=(n, n/2)
+        #j=j+1
+        #I[j]=(-n, n/2)
+    for n in numbers:
+       # print("n", n)
+        for m in range(0, ceil(n/2)):
+            if efield["name"] in {"SIN", "SOFTSIN", "ANTIRES"}:
+                x=0 #e**x = 1 for x = 0
+            if efield["name"] in {"QSSIN"}:
+                x=1
+            j=j+1
+            M[:, j]=np.exp(-1j * W[n-2*m] * T_i)*np.exp(x*n*(T_i-T_0)**2/(2*sigma**2))
+            I[j]= (n,m)
+            M[:, int(j+L[N%2])]=np.exp(1j * W[n-2*m] * T_i)*np.exp(x*n*(T_i-T_0)**2/(2*sigma**2))
+            I[int(j+L[N%2])]= (-n,m)
+    #print(I)
+    #print(M)     
+#            for i_m in range(0, floor(i_n/2)+1):
+#                j=j+1
+#                exp_neg = np.exp(-1j * W[i_n-2*i_m] * T_i, dtype=np.cdouble)
+#                exp_pos = np.exp(1j * W[i_n-2*i_m] * T_i, dtype=np.cdouble)
+#                M[:, j] = exp_neg
+#                M[:, j-1+L] = exp_p
+#
+#    if efield["name"] in {"QSSIN"}:
+#        j=0
+#        for i_n in range(1, N+1):
+#            for i_m in range(0, floor(i_n/2)+1):
+#                j=j+1
+#                exp_neg = np.exp(-1j * W[i_n-2*i_m] * T_i, dtype=np.cdouble)*np.exp(i_n*(T_i-T_0)**2/(2*sigma**2))
+#                exp_pos = np.exp(1j * W[i_n-2*i_m] * T_i, dtype=np.cdouble)*np.exp(i_n*(T_i-T_0)**2/(2*sigma**2))
+#                M[:, j] = exp_neg
+#                M[:, j-1+L] = exp_pos
 
     #output_file = f'M_matrix_F{i_f+1}_{INV_MODE}.txt'
     #header= "#".join([f"E_0 E_1_0 E_2_0 E_2_1 E_-1_0, E_-2_0 E_-2_1"])
@@ -459,21 +494,26 @@ def Coefficients_Inversion_nm(NW,N_samp,P,W,
     #    f.write(header + '\n') 
     #    for line in M:
     #        np.savetxt(f, line.reshape(1, -1), fmt='%.4f', delimiter=' ')
-    
+
     if INV_MODE=='full':
-        INV = np.linalg.inv(M)
-        COND = np.linalg.cond(M)
-        spacing=1/np.spacing(1)
-        #print("cond=", COND, "spacing=", spacing)
-        if  COND > spacing:
-            print("Singular matrix!!! standard inversion failed ")
-            print("set inversion mode to LSTSQ")
-            INV_MODE="lstsq"
+        if M_size != N_samp:
+            print("M is not square so switch to least square method")
+            INV_MODE='lstsq'
+        else: 
+            #INV = np.linalg.inv(M)
+            COND = np.linalg.cond(M)
+            spacing=1/np.spacing(1)
+            #print("cond=", COND, "spacing=", spacing)
+            if COND < spacing:
+                INV = np.linalg.inv(M)
+            if  COND > spacing:
+                print("Singular matrix!!! standard inversion failed ")
+                print("set inversion mode to LSTSQ")
+                INV_MODE="lstsq"
 
     if INV_MODE=='lstsq':
 # Least-squares
-        I = np.eye(N_samp,M_size)
-        INV = np.linalg.lstsq(M, I, rcond=tol)[0]
+        INV = np.linalg.lstsq(M, P_i, rcond=tol)[0]
 
     if INV_MODE=='svd':
 # Truncated SVD
@@ -485,25 +525,25 @@ def Coefficients_Inversion_nm(NW,N_samp,P,W,
 #        for i_n in range(nP_components):
 #            X_here[i_n]=X_here[i_n]+np.sum(INV[i_n,:]*P_i[:])
 
-
+    #f=open("INV_%i.txt"%(i_f+1), "w")
+    #for i in INV:
+    #    f.write(f"{i} \n")
+    #f.close()
     #if SOLV_MODE==['LSReg']:
-    X_here=np.zeros(L,dtype=np.cdouble)
-    #print (L, len(X_here))
-    #for i_n in range(L):
-    #    if INV_MODE=='lstsq' or INV_MODE=='lstsq_init':
-    #        X_here[i_n]=X_here[i_n]+np.sum(INV[i_n,:]*P_i[:])
-    #    else:
-    #X_here=X_here+np.sum(INV[i_n,:]*P_i[:])
-    for i_n in range(L):
-        X_here[i_n]=X_here[i_n]+np.sum(INV[i_n,:]*P_i[:])
-
-    return X_here,Sampling
+    n_x=L[N%2]+N//2+1
+    X_here=np.zeros(n_x,dtype=np.cdouble)
+    for i_n in range(n_x):
+        if INV_MODE=='lstsq' or INV_MODE=='lstsq_init':
+            X_here[i_n]=INV[i_n]
+        else:
+            X_here[i_n]=X_here[i_n]+np.sum(INV[i_n,:]*P_i[:]) 
+    return X_here,Sampling, I
 
 
 
 
 
-def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1,Sampling=1.0, T_range=[-1, -1],prn_Peff=False,INV_MODE="full",prn_Xhi=True):
+def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1, Sampling_time=1.0, Sampling_range=[1, 1], prn_Peff=False,INV_MODE="full",prn_Xhi=True):
     """
     Perform harmonic analysis on a dataset.
 
@@ -532,10 +572,9 @@ def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1,Sampling=1.0, T_range=[-1, -
     current     =nldb.Current
     # check if current has been calculated
     l_eval_current=nldb.l_eval_CURRENT
-    
-    print (l_eval_current)
+    ##print(efield) 
     # Harmonic frequencies
-
+    N_samp=int(N_samp)
     freqs = np.array([efield["freq_range"][0] for efield in nldb.Efield], dtype=np.double)
 
     print("\n* * * Harmonic analysis * * *\n")
@@ -562,14 +601,14 @@ def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1,Sampling=1.0, T_range=[-1, -
     print("freqs [eV] = ",freqs* ha2ev)
     T_period = 2.0 * np.pi / W_step
     print(f"Effective max time period: {T_period / fs2aut:.3f} [fs]")
-    if (efield["name"]=="SOFTSIN" or efield["name"]=="SIN"):
-        sigma=0.0
-        if T_range[0] <= 0.0:
-            T_range[0] = time[-1] - T_period
-        if T_range[1] <= 0.0:
-            T_range[1] = time[-1]
-    if  efield["name"]=="QSSIN":
-        sigma=efield["damping"]/(2.0*(2.0*np.log(2.0))**0.5)
+   # if (efield["name"]=="SOFTSIN" or efield["name"]=="SIN"):
+   #     sigma=1
+   #     if Sampling_range[0] <= 0.0:
+   #         T_range[0] = time[-1] - T_period
+   #     if T_range[1] <= 0.0:
+   #         T_range[1] = time[-1]
+   # if  efield["name"]=="QSSIN":
+   #     sigma=efield["damping"]/(2.0*(2.0*np.log(2.0))**0.5)
         #T_0=np.pi/efield["frequency"][0]*float(round(efield["frequency"][0]/np.pi*3.*sigma))
         #print(sigma*ha2ev)
         #print(efield["frequency"][0]*ha2ev)
@@ -581,25 +620,28 @@ def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1,Sampling=1.0, T_range=[-1, -
     #print(f"Time range: {T_range[0] / fs2aut:.3f} - {T_range[1] / fs2aut:.3f} [fs]")
     #T_range_initial = np.copy(T_range)
         
-    if X_order%2==0: M_size =(X_order*(X_order+4)+2)/2
-    else:
-        M_size =(X_order*(X_order+4)+1)/2 
-    
+    #if X_order%2==0: M_size =(X_order*(X_order+4)+2)/2
+    #else:
+    #    M_size =(X_order*(X_order+4)+1)/2 
+    N=X_order
+    M_size = 1+2*N + int(N*(N-1)/2)
     M_size=int(M_size)
-    L=int((M_size-1)/2+1)
+    if N_samp<1: N_samp=M_size
+    L = [int(N/2*((N/2+1))),int(((N+1)/2)**2)]
     # Polarization response
-    X_effective = np.zeros((L, n_runs, 3), dtype=np.cdouble)
-    X_matrix = np.zeros((X_order + 1, X_order + 1, n_runs, 3 ), dtype=np.cdouble)
-    Susceptibility = np.zeros((X_order+1, X_order+1, n_runs, 3), dtype=np.cdouble)
-    SamplingP = np.zeros((M_size, 2, n_runs, 3), dtype=np.double)
+    n_x=L[N%2]+N//2+1 # dimension of the retuned response vecotr X
+    X_effective = np.zeros((n_x, n_runs, 3), dtype=np.cdouble)
+    #X_matrix = np.zeros((X_order + 1, X_order + 1, n_runs, 3 ), dtype=np.cdouble)
+    Susceptibility = np.zeros((n_x, n_runs, 3), dtype=np.cdouble)
+    SamplingP = np.zeros((N_samp, 2, n_runs, 3), dtype=np.double)
     Harmonic_Frequency = np.zeros((X_order+1, n_runs), dtype=np.double)
 
     # Current response
     if l_eval_current:
-        Sigma_effective = np.zeros((L, n_runs, 3), dtype=np.cdouble)
-        Sigma_matrix = np.zeros((X_order + 1, X_order + 1, n_runs, 3 ), dtype=np.cdouble)
-        Conductibility = np.zeros((X_order+1, X_order+1, n_runs, 3), dtype=np.cdouble)
-        SamplingJ = np.zeros((M_size, 2, n_runs, 3), dtype=np.double)
+        Sigma_effective = np.zeros((n_x, n_runs, 3), dtype=np.cdouble)
+        #Sigma_matrix = np.zeros((X_order + 1, X_order + 1, n_runs, 3 ), dtype=np.cdouble)
+        Conductibility = np.zeros((n_x, n_runs, 3), dtype=np.cdouble)
+        SamplingJ = np.zeros((N_samp, 2, n_runs, 3), dtype=np.double)
 
     # Generate multiples of each frequency
     for i_order in range(X_order+1):
@@ -612,28 +654,54 @@ def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1,Sampling=1.0, T_range=[-1, -
 
     if loop_on_frequencies:
         print("Loop on frequencies...")
-        
     # Find the Fourier coefficients by inversion
     for i_f in tqdm(range(n_runs)):
         T_0=0.0
-        #sigma=0.0
+        T_range=[0,0]
+        if (efield["name"]=="SOFTSIN" or efield["name"]=="SIN"):
+            sigma=1
+            if Sampling_range == [1,1]:
+                T_range[0] = time[-1] - T_period
+                T_range[1] = time[-1]
+
         if  efield["name"]=="QSSIN":
+            sigma=efield["damping"]/(2.0*(2.0*np.log(2.0))**0.5)
             T_period = 2.0 * np.pi / Harmonic_Frequency[1, i_f]
-            T_0=np.pi/Harmonic_Frequency[1, i_f]*float(round(Harmonic_Frequency[1, i_f]/np.pi*3.0*sigma))
-            if T_range[0] <= 0.0:
-                T_range[0] = Sampling*T_0 - T_period/2
-            if T_range[1] <= 0.0:
-                T_range[1] = Sampling*T_0 + T_period/2
-        #print(f"Time range: {T_range[0] / fs2aut:.3f} - {T_range[1] / fs2aut:.3f} [fs]")
+            qssin_peak=sigma*efield["field_peak"]
+            freq = Harmonic_Frequency[1, i_f].item()
+            T_0 = np.pi / freq * float(round(freq / np.pi * qssin_peak))
+            #T_0=np.pi/Harmonic_Frequency[1, i_f]*float(round(Harmonic_Frequency[1, i_f]/np.pi*qssin_peak))
+            #T_0=qssin_peak
+            print("T_0",T_0/fs2aut)
+            print("T_period", T_period/fs2aut)
+            if Sampling_time == 1:
+                Sampling_time_aut=Sampling_time
+                print(f'setting sampling time around T0={T_0/fs2aut:.1f}[fs]')
+                if Sampling_range == [1, 1]:
+                    print(f'setting sampling range to one period of oscillation around the peak T0')
+                else:
+                    print(f'setting sampling range to {-Sampling_range[0]*T_period/2/fs2aut:.2f} - {Sampling_range[1]*T_period/2/fs2aut:.2f} respect the peak in T0')
+            else:
+                print(f'setting sampling time around {Sampling_time:.1f}[fs]')
+                Sampling_time_aut=Sampling_time*fs2aut
+                T_0=1
+                if Sampling_range == [1, 1]:
+                    print("setting sampling range to one period os oscillation around the sampling time")
+                else:
+                    print(f'setting sampling range to {-Sampling_range[0]*T_period/2/fs2aut:.2f}-{Sampling_range[1]*T_period/2/fs2aut:.2f} respect the sampling time')
+            T_range[0] = Sampling_time_aut*T_0 - (Sampling_range[0]*T_period/2)
+            T_range[1] = Sampling_time_aut*T_0 + (Sampling_range[1]*T_period/2)
+        print(f"Time range: {T_range[0] / fs2aut:.3f} - {T_range[1] / fs2aut:.3f} [fs]")
         T_range_initial = np.copy(T_range)
         T_range, out_of_bounds = update_T_range(T_period, T_range_initial, time)
-        #print("sigma",sigma/fs2aut)
         
         #if N_samp==-1: N_samp = M_size
         if out_of_bounds:
             print(f"WARNING! Time range out of bounds for frequency: {Harmonic_Frequency[1, i_f] * ha2ev:.3e} [eV]")
+            print(f'Sampling range redefined as the last period of the simulation time')
+            print(f"updated Time range: {T_range[0] / fs2aut:.3f} - {T_range[1] / fs2aut:.3f} [fs]")
         for i_d in range(3):
-            X_effective[:, i_f, i_d], SamplingP[:, :, i_f, i_d] = Coefficients_Inversion_nm(
+            X_effective[:, i_f, i_d], SamplingP[:,:, i_f, i_d], I = Coefficients_Inversion_nm(
                 X_order + 1, N_samp, polarization[i_f][i_d, :],
                 Harmonic_Frequency[:, i_f],
                 i_f,T_0, sigma,
@@ -641,91 +709,52 @@ def Harmonic_Analysis_nm(nldb, X_order=4, N_samp=-1,Sampling=1.0, T_range=[-1, -
 
         if l_eval_current:
             for i_d in range(3):
-                Sigma_effective[:,i_f,i_d],SamplingJ[:,:,i_f,i_d] = Coefficients_Inversion_nm(
+                Sigma_effective[:,i_f,i_d],SamplingJ[:,:, i_f,i_d], I = Coefficients_Inversion_nm(
                     X_order+1, N_samp, current[i_f][i_d,:],
                     Harmonic_Frequency[:,i_f],
                     i_f,T_0,sigma,
                     T_period,T_range,T_step,efield,INV_MODE)
         
-                # change order in matrix:
+            
+    for i_f in range(n_runs):
+        for j in range(n_x): 
+            # Calculate susceptibilities
+            if N == 1:
+                Susceptibility[j, i_f, 0] = 4.0 * np.pi * np.dot(efield['versor'],X_effective[j,i_f,:])
+                if l_eval_current:
+                    Conductibility[j,i_f,0]= 4.0*np.pi*np.dot(efield['versor'][:],Sigma_effective[j,i_f,:])
+            else:
+                Susceptibility[j, i_f, :] = X_effective[j, i_f, :]
+                if l_eval_current:
+                    Conductibility[j,  i_f,:] = Sigma_effective[j, i_f, :]
+
+            Susceptibility[j, i_f, :] *= Divide_by_the_Field(nldb.Efield[i_f],  I[j][0])
+            if l_eval_current:
+                Conductibility[j,i_f,:] *=Divide_by_the_Field(nldb.Efield[i_f], I[j][0])
         
-
-        """ create a matrix from X_here array:
-        X_here=[0_0, 1_0, 2_0, 2_1, 3_0, 3_1, 4_0, 4_1, 4_2, 5_0, 5_1, 5_2,...]
-        to 
-        with that must define j as n_m
-        X_matrix=zeros[(X_order+1, X_order+1)]
-        where the raw are the n-m index and the column are the m index
-        =   [0  , 0  , 0  , 0  , ...]
-            [1_0, 2_1, 0  , 0  , ...]
-            [2_0, 3_1, 4_2, 0  , ...]
-            [3_0, 4_1, 5_2, 6_3, ...]
-            [4_0, 5_1, 6_2, ..., ...]
-            [...]
-    
-        for the field associated
-        Efield_order=zeros[(X_order+1, X_order+1)]
-         Efield_order[i,k]=i-j
-         =   [0  , 0   , 0   , 0   , ...]
-             [1  , 0   , -1  , -2  , ...]
-             [2  , 1   , 0   , -1  , ...]
-             [3  , 2   , 1   , 0   , ...]
-             [...] 
-
-        """
-        for i_d in range(3):
-            # Fill matrices
-            j = 0
-            for n in range(0,X_order + 1): #order 
-                for m in range(0, int(floor(n/2) +1)): # negative frequency
-                    k = n - m # positive frequency
-                    X_matrix[k, m, i_f, i_d] = X_effective[j, i_f, i_d]
-                    if l_eval_current:
-                        Sigma_matrix[k, m, i_f, i_d] = Sigma_effective[j, i_f, i_d]
-                    #field order = k 
-                    j=j+1
-             
-             # Calculate susceptibilities
-                    if n == 1:
-                        Susceptibility[k, m , i_f, 0] = 4.0 * np.pi * np.dot(efield['versor'], X_matrix[k, m, i_f, :])
-                        if l_eval_current:
-                            Conductibility[k, m ,i_f,0]= 4.0*np.pi*np.dot(efield['versor'][:],Sigma_matrix[k, m ,i_f,:])
-                    else:
-                        Susceptibility[k, m, i_f, :] = X_matrix[k, m , i_f, :]
-                        if l_eval_current:
-                            Conductibility[k, m,  i_f,:] = Sigma_matrix[k, m, i_f, :]
-
-                    Susceptibility[k, m , i_f, :] *= Divide_by_the_Field(nldb.Efield[i_f], n )
-                    if l_eval_current:
-                        Conductibility[k, m ,i_f,:] *=Divide_by_the_Field(nldb.Efield[i_f], n)
-        
-        output_file = f'Xeffective_F{i_f+1}_{INV_MODE}.txt'
-        header= "#".join([f"X_eff_x   X_eff_y   X_eff_z"])
-        with open(output_file, 'w') as f:
-            f.write(header + '\n')
-            for line in X_effective[:,i_f, :]:
-                np.savetxt(f, line.reshape(1, -1), fmt='%.4E', delimiter=' ')
+       # output_file = f'Xeffective_F{i_f+1}_{INV_MODE}.txt'
+       # header= "#".join([f"X_eff_x   X_eff_y   X_eff_z"])
+       # with open(output_file, 'w') as f:
+       #     f.write(header + '\n')
+       #     for line in X_effective[:,i_f, :]:
+       #         np.savetxt(f, line.reshape(1, -1), fmt='%.4E', delimiter=' ')
 
     #print(X_effective[3, :, 1])
     prefix = f'-{nldb.calc}' if nldb.calc != 'SAVE' else ''
 
-    for n in range(X_order+1):
-        for m in range(0, floor(n/2)+1):
-            k=n-m
-            Susceptibility[k,m,:,:]*=get_Unit_of_Measure(n)     
+    for j in range(n_x):
+        Susceptibility[j,:,:]*=get_Unit_of_Measure(I[j][0])     
         
     
     if prn_Xhi:
         print("Write final results: xhi^1, xhi^2, xhi^3, etc...")
-        for n in range(X_order+1):
-           for m in range(0, floor(n/2)+1):
-               k=n-m
-               output_file = f'o{prefix}.YamboPy-X_probe_order_{k+m}{m}_{Sampling}'
-               header = "[eV] " + " ".join([f"X/Im(z){n}{m} X/Re(z){n}{m}" for _ in range(3)])
-               values = np.column_stack((freqs * ha2ev, Susceptibility[k,m, :, 0].imag, Susceptibility[k,m, :, 0].real,
-                                         Susceptibility[k,m, :, 1].imag, Susceptibility[k,m, :, 1].real,
-                                         Susceptibility[k,m, :, 2].imag, Susceptibility[k,m, :, 2].real))
-               np.savetxt(output_file, values, header=header, delimiter=' ', footer="Polarization Harmonic analysis results")
+        for j in range(n_x):
+            output_file = f'o{prefix}.YamboPy-X_probe_order_{int(I[j][0])}_{int(I[j][1])}_Sampling[-{Sampling_range[0]}:{Sampling_range[1]}]Tperiod_Nmax{N}'
+            header = "[eV] " + " ".join([f"X/Im(z) X/Re(z)" for _ in range(3)])
+            values = np.column_stack((freqs * ha2ev, Susceptibility[j, :, 0].imag, Susceptibility[j, :, 0].real,
+                                     Susceptibility[j, :, 1].imag, Susceptibility[j, :, 1].real,
+                                     Susceptibility[j, :, 2].imag, Susceptibility[j, :, 2].real))
+            np.savetxt(output_file, values, header=header, delimiter=' ', footer="Polarization Harmonic analysis results")
        # if l_eval_current:
        #     print("Write final results: sigma^1, sigma^2, sigma^3, etc...")
        #     for i_order in range(X_order + 1):
@@ -771,7 +800,7 @@ def update_T_range(t_period, t_range_initial, time):
     """
     # Initialize the analysis range
     t_range = list(t_range_initial)  # Ensure we work on a mutable copy
-    t_range[1] = t_range[0] + t_period
+    #t_range[1] = t_range[0] + t_period
 
     # Check if the range goes out of bounds and adjust if necessary
     t_range_out_of_bounds = False
@@ -779,6 +808,5 @@ def update_T_range(t_period, t_range_initial, time):
         t_range[1] = time[-1]
         t_range[0] = t_range[1] - t_period
         t_range_out_of_bounds = True
-
     return t_range, t_range_out_of_bounds
 

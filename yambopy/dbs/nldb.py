@@ -32,7 +32,6 @@ class YamboNLDB(object):
             data_obs= Dataset(self.nl_path)
         except:
             raise ValueError("Error reading NONLINEAR database at %s"%self.nl_path)
-
         self.read_observables(data_obs)
 
 
@@ -51,7 +50,10 @@ class YamboNLDB(object):
          efield["frequency"]  = self.NL_er[:]# NL_er
          efield["RT_step"]=self.RT_step
          efield["N_energy_steps"]=self.NE_steps
-         #
+         
+         #if "_fragment_" not in database.filepath():
+         #efield["field_peak"]= database.variables['Field_peak_'+str(n)][:].item()
+         efield["field_peak"]= database.variables['Field_peak_'+str(n)][0]
          # set t_initial according to Yambo 
          #
          efield["initial_indx"] =max(round(efield["initial_time"]/RT_step)+1,2)
@@ -95,6 +97,7 @@ class YamboNLDB(object):
         self.Integrator     = database.variables['Integrator'][...].tostring().decode().strip()
         self.Correlation    = database.variables['Correlation'][...].tostring().decode().strip()
         #
+        
         # Time variables
         #
         self.IO_TIME_N_points  = database.variables['IO_TIME_N_points'][0].astype('int')
@@ -153,6 +156,7 @@ class YamboNLDB(object):
 
             # Read only the first field for SHG
             # I don't need it in the pump-probe configuration
+            #print["fino a qui ok"]
             efield=self.read_Efield(data_p_and_j,self.RT_step,1)
             efield2=self.read_Efield(data_p_and_j,self.RT_step,2)
             self.Efield.append(efield.copy())
